@@ -1,6 +1,7 @@
 import logging
 from typing import Any, Dict, cast
 import uuid
+from dotenv import load_dotenv
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
 from sentence_transformers import SentenceTransformer
@@ -10,13 +11,13 @@ import json
 
 from app.config.settings import knowledge_settings
 
+load_dotenv()
 
 QDRANT_COLLECTION = knowledge_settings.collection_name
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
 QDRANT_URL = os.getenv("QDRANT_URL")
 
-with open("info.json","r") as f:
-    FAQ = json.load(f);
+
 
 
 logging.basicConfig(
@@ -27,13 +28,18 @@ logger = logging.getLogger(__name__)
 class KnowledgeManager:
     def __init__(self):
         self.collection_name = QDRANT_COLLECTION
-        self.faq = FAQ
         
+        with open("app/json/info.json","r",encoding="utf-8") as f:
+            data = json.load(f);
+        if isinstance(data, dict):
+            # Try common key names
+            self.faq = data.get("faqs") or data.get("faq") or data.get("data") or []
+        else:
+            self.faq = data
         self.qdrant = QdrantClient(
             url=QDRANT_URL,
             api_key=QDRANT_API_KEY
         )
-        
         self.encoder = SentenceTransformer("all-MiniLM-L6-v2")
         
     def initialize(self):
@@ -61,15 +67,34 @@ class KnowledgeManager:
     
     def _sync_faqs(self):
         """Sync FAQs to Qdrant."""
+        logger.info(f"FAQ type: {type(self.faq)}")
+        logger.info(f"FAQ content: {self.faq[:2] if self.faq else 'Empty'}")
+        
+        if not isinstance(self.faq, list):
+            logger.error(f"FAQ is not a list! Type: {type(self.faq)}")
+            return
+        
         points = []
-        for faq in self.faq:
-            vector = self.encoder.encode(faq["question"]).tolist()
+        for idx, faq in enumerate(self.faq):
+            # Add type checking
+            if not isinstance(faq, dict):
+                logger.warning(f"Item {idx} is not a dict: {type(faq)} - {faq}")
+                continue
+                
+            question = faq.get("question")
+            answer = faq.get("answer")
+
+            if not question or not answer:
+                logger.warning(f"Missing question or answer in item {idx}")
+                continue 
+
+            vector = self.encoder.encode(question).tolist()
             point = PointStruct(
                 id=str(uuid.uuid4()),
                 vector=vector,
                 payload={
-                    "question": faq["question"],
-                    "answer": faq["answer"],
+                    "question": question,
+                    "answer": answer,
                     "category": "faq",
                     "source": "local"
                 }
@@ -82,6 +107,8 @@ class KnowledgeManager:
                 points=points
             )
             logger.info(f"Synced {len(points)} FAQs to Qdrant")
+        else:
+            logger.warning("No valid FAQs to sync!")
     
     def search(self, query: str, threshold: float = 0.7, top_k: int = 3):
         """
@@ -91,7 +118,7 @@ class KnowledgeManager:
         
         results = self.qdrant.query_points(
             collection_name=self.collection_name,
-            query_vector=query_vector,
+            query=query_vector,
             limit=top_k,
         )
         

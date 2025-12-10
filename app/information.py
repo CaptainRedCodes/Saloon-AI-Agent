@@ -1,6 +1,6 @@
 import json
 
-with open("info.json","r") as f:
+with open("app/json/info.json","r") as f:
     app_data = json.load(f);
 
 name = app_data["name"]

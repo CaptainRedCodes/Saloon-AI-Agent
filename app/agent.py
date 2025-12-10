@@ -20,10 +20,17 @@ import asyncio
 
 import json
 
-with open("info.json","r") as f:
+with open("app/json/info.json","r") as f:
     app_data = json.load(f);
-SALON_INFO = app_data["name"],app_data["salon_address"],app_data["contact"],app_data["working_hours"]
+SALON_INFO = (
+    app_data["name"],
+    app_data["address"],
+    app_data["contact"],
+    app_data["working_hours"]
+)
 SALON_SERVICES =app_data["services"]
+
+
 asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 load_dotenv()
 

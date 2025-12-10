@@ -1,7 +1,7 @@
 import os
 import logging
 import firebase_admin
-from firebase_admin import credentials, firestore, db
+from firebase_admin import credentials, firestore
 
 # Configure logging
 logging.basicConfig(
@@ -31,7 +31,7 @@ class FirebaseManager:
         """Initialize Firebase Admin SDK."""
         try:
             if not firebase_admin._apps:
-                cred_path = r"C:\Users\svmra\OneDrive\Documents\projects\FrontDesk\saloon-ai-agent-firebase-adminsdk-fbsvc-5d98757c45.json"
+                cred_path = r"C:\Users\svmra\OneDrive\Documents\projects\Salon-AI-Agent\saloon-ai-agent-firebase-adminsdk-fbsvc-83d3686a85.json"
                 if cred_path and os.path.exists(cred_path):
                     cred = credentials.Certificate(cred_path)
                     firebase_admin.initialize_app(cred)
