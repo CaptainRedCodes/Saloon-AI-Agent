@@ -1,45 +1,25 @@
-SALON_INFO = {
-  "name": "Super Unisex Salon",
-  "address": "1st Floor, Phoenix Mall, Bengaluru",
-  "contact": "+91 9999999999",
-  "working_hours": {
-    "Monday": "9AM - 7PM",
-    "Tuesday": "9AM - 7PM",
-    "Wednesday": "9AM - 7PM",
-    "Thursday": "Holiday",
-    "Friday": "9AM - 7PM",
-    "Saturday": "9AM - 7PM",
-    "Sunday": "9AM - 7PM"
-  }
-}
+import json
 
-SALON_SERVICES = {
-  "haircut": 40,
-  "hair coloring": 80,
-  "highlights": 120,
-  "blow dry": 30,
-  "hair treatment": 60,
-  "facial treatment": 90
-}
+with open("info.json","r") as f:
+    app_data = json.load(f);
 
-salon_name = SALON_INFO["name"]
-salon_address = SALON_INFO["address"]
-salon_contact = SALON_INFO["contact"]
-
+name = app_data["name"]
+address = app_data["address"]
+contact = app_data["contact"]
+services = app_data["services"]
+working_hours = app_data["working_hours"]
 # Format services text
-services_text = "\n".join([f"- {service.title()}: ${price}" for service, price in SALON_SERVICES.items()])
+services_text = "\n".join([f"- {service.title()}: ${price}" for service, price in services.items()])
 
 INSTRUCTIONS = f"""You are a professional receptionist at Super Unisex Salon. Your role is to provide excellent customer service through phone interactions.
 
             <salon_information>
-            Name: {salon_name}
-            Address: {salon_address}
-            Contact: {salon_contact}
+            Name: {name}
+            Address: {address}
+            Contact: {contact}
 
             WORKING HOURS:
-            - Monday to Wednesday: 9:00 AM - 7:00 PM
-            - Thursday: CLOSED (Holiday)
-            - Friday to Sunday: 9:00 AM - 7:00 PM
+            {working_hours}
 
             AVAILABLE TIME SLOTS:
             Morning: 9:00 AM, 10:00 AM, 11:00 AM
@@ -221,25 +201,3 @@ INSTRUCTIONS = f"""You are a professional receptionist at Super Unisex Salon. Yo
 
             Remember: Your success is measured by customer satisfaction and successful bookings. Be helpful, efficient, and genuinely care about finding the best solution for each customer."""
 
-SALON_FAQ = [
-  {
-    "question": "What services do you offer?",
-    "answer": "We offer a wide range of services including haircuts, hair styling, coloring, facials."
-  },
-  {
-    "question": "Do I need to book an appointment?",
-    "answer": "Walk-ins are welcome, but we recommend booking an appointment in advance to avoid waiting time — especially on weekends."
-  },
-  {
-    "question": "How can I book an appointment?",
-    "answer": "You can book through our website, call us at +91 9999999999, or visit the salon directly."
-  },
-  {
-    "question": "What are your working hours?",
-    "answer": "We are open from 9AM to 7PM on all days except Thursday, which is a holiday."
-  },
-  {
-    "question": "Do you offer services for both men and women?",
-    "answer": "Yes! We are a unisex salon offering services for everyone."
-  }
-]

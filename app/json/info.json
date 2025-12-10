@@ -10,5 +10,13 @@
     "Friday": "9AM - 7PM",
     "Saturday": "9AM - 7PM",
     "Sunday": "9AM - 7PM"
-  }
+  },
+  "services":{
+  "haircut": 40,
+  "hair coloring": 80,
+  "highlights": 120,
+  "blow dry": 30,
+  "hair treatment": 60,
+  "facial treatment": 90
+}
 }

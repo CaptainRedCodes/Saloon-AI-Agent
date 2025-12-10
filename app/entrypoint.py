@@ -8,7 +8,7 @@ from livekit.agents import (
 )
 from livekit import agents
 from livekit.plugins import silero
-from livekit.plugins.turn_detector.multilingual import MultilingualModel
+from livekit.plugins.turn_detector.english import EnglishModel
 import logging
 import asyncio
 
@@ -45,7 +45,7 @@ async def entrypoint(ctx: JobContext):
             stt=settings.stt,
             llm=settings.llm,
             tts=settings.tts,
-            turn_detection=MultilingualModel(),                       
+            turn_detection=EnglishModel(),                       
             vad=ctx.proc.userdata["vad"],
             preemptive_generation=True
         )                   

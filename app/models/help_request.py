@@ -38,16 +38,3 @@ class HelpRequestView(BaseModel):
     class Config:
         arbitrary_types_allowed = True
         
-class HelpRequestResolvedEvent(BaseModel):
-    event: str = Field(default="help_request_resolved", description="Event type")
-    request_id: str = Field(..., description="UUID of the resolved request")
-    room_name: Optional[str] = Field(None, description="Chat room to send answer to")
-    original_question: str = Field(..., description="The original customer question")
-    answer: str = Field(..., description="The supervisor's answer")
-
-class HelpRequestCreatedEvent(BaseModel):
-    event: str = Field(default="help_request_created", description="Event type")
-    request_id: str = Field(..., description="UUID of the new request")
-    question: str = Field(..., description="The customer's question")
-    room_name: Optional[str] = Field(None, description="Chat room identifier")
-    created_at: str = Field(..., description="ISO format timestamp")

@@ -14,9 +14,16 @@ from app.help_request import HelpRequestManager
 from app.models.booking import  BookingCreate, BookingUpdate 
 from app.models.help_request import HelpRequestCreate
 from app.models.salon_model import SalonUserData,AvailabilityCheckPayload
-from app.information import SALON_INFO,SALON_SERVICES,INSTRUCTIONS
+from app.information import INSTRUCTIONS
+
 import asyncio
 
+import json
+
+with open("info.json","r") as f:
+    app_data = json.load(f);
+SALON_INFO = app_data["name"],app_data["salon_address"],app_data["contact"],app_data["working_hours"]
+SALON_SERVICES =app_data["services"]
 asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 load_dotenv()
 
@@ -286,78 +293,47 @@ class Assistant(Agent):
         request: HelpRequestCreate
     ) -> str:
         """
-        Request human assistance for questions not covered in FAQ/knowledge base.
-        Uses context to provide better information to support team.
+        Try to answer from knowledge base, otherwise send to supervisor.
         
         Args:
-            question: Customer's legitimate query
+            request: Contains the question and room_name
         """
         question = request.question.strip()
-        
-        # Track in context
-        context.userdata.add_query(question)
-        context.userdata.last_tool_called = "request_help"
         
         logger.info(f"Help requested: {question}")
         
         try:
-            question_lower = question.lower()
-            try:
-                faq_results = await self.knowledge_base.search_faq(question_lower)
-                if faq_results:
-                    faq_answer = faq_results.get('answer')
-                    if faq_answer:
-                        logger.info(f"Found FAQ answer for: {question}")
-                        context.userdata.last_tool_result = "faq_found"
-                        return faq_answer
-            except Exception as e:
-                logger.warning(f"FAQ search failed: {e}")
-
-            # Check Knowledge Base
-            try:
-                kb_answer = await self.knowledge_base.search_knowledge(question_lower)
-                if kb_answer:
-                    logger.info(f"Found KB answer for: {question}")
-                    context.userdata.last_tool_result = "kb_found"
-                    return kb_answer
-            except Exception as e:
-                logger.warning(f"KB search failed: {e}")
-
-            # Create help request with context
-            room_name = request.room_name
-
-            customer_context = {
-                "timestamp": datetime.now().isoformat(),
-                "room_name": room_name,
-                "booking_progress": {
-                    "customer_name": context.userdata.current_booking.customer_name,
-                    "service": context.userdata.current_booking.service,
-                    "appointment_date": context.userdata.current_booking.appointment_date,
-                    "appointment_time": context.userdata.current_booking.appointment_time,
-                    "is_complete": context.userdata.current_booking.is_complete()
-                },
-                "conversation_state": context.userdata.conversation_state,
-                "previous_queries": context.userdata.previous_queries[-3:] if context.userdata.previous_queries else []
-            }
-
+            kb_result = self.knowledge_base.search(question, threshold=0.7)
+            
+            if kb_result:
+                logger.info(f"✓ KB answered: {question[:50]}...")
+                context.userdata.last_tool_called = "request_help"
+                context.userdata.last_tool_result = "kb_found"
+                return kb_result["answer"]
+            
+            logger.info(f"✗ KB couldn't answer, sending to supervisor: {question[:50]}...")
+            
             payload = HelpRequestCreate(
                 question=question,
-                room_name=room_name
+                room_name=request.room_name
             )
+            
             request_id = await self.help_manager.create_help_request(payload)
-
-            logger.info(f"Help request created: {request_id}")
-            context.userdata.last_tool_result = f"help_requested:{request_id}"
-
+            
+            context.userdata.last_tool_called = "request_help"
+            context.userdata.last_tool_result = f"supervisor_notified:{request_id}"
+            
+            logger.info(f"✓ Help request created: {request_id}")
+            
             return (
-                f"Let me check with my supervisor about that and get back to you. "
-                f"I've noted your question. "
-                f"Please hold for a moment while I get the correct information."
+                "I've sent your question to my supervisor. "
+                "They'll get back to you shortly with the answer. "
+                "Is there anything else I can help you with in the meantime?"
             )
-
+            
         except Exception as e:
-            logger.error(f"Failed in request_help: {e}", exc_info=True)
+            logger.error(f"Error in request_help: {e}")
             return (
-                "I'm having a technical issue right now. "
-                "Please hold on or I can connect you with a supervisor."
+                "I'm having trouble right now. "
+                "Please hold on and I'll get someone to assist you."
             )

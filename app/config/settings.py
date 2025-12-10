@@ -13,19 +13,14 @@ class Settings(BaseSettings):
 
 
 class BookingSettings(BaseSettings):
-    """Booking collection and related config"""
     collection_name: str = "appointments"
 
 
 class HelpSettings(BaseSettings):
-    """Help requests collection and related config"""
     collection_name: str = "help_requests"
 
 class KnowledgeSettings(BaseSettings):
-    """ KnowledgeBase settings and related config"""
-    logs_collection = "help_logs"
-    qdrant_collection = "knowledge_base"
-    refresh_interval = 1800
+    collection_name:str = "knowledge_base"
 
 
 settings = Settings()
