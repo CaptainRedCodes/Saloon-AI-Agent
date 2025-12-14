@@ -1,5 +1,5 @@
 {
-  "name": "Super Unisex Salon",
+  "name": "Tony and Man Hair Salon",
   "address": "1st Floor, Phoenix Mall, Bengaluru",
   "contact": "+91 9999999999",
   "working_hours": {
@@ -11,12 +11,34 @@
     "Saturday": "9AM - 7PM",
     "Sunday": "9AM - 7PM"
   },
-  "services":{
-  "haircut": 40,
-  "hair coloring": 80,
-  "highlights": 120,
-  "blow dry": 30,
-  "hair treatment": 60,
-  "facial treatment": 90
-}
+  "services": {
+    "haircut": 40,
+    "hair coloring": 80,
+    "highlights": 120,
+    "blow dry": 30,
+    "hair treatment": 60,
+    "facial treatment": 90
+  },
+  "faqs": [
+    {
+      "question": "What services do you offer?",
+      "answer": "We offer a wide range of services including haircuts, hair styling, coloring, facials."
+    },
+    {
+      "question": "Do I need to book an appointment?",
+      "answer": "Walk-ins are welcome, but we recommend booking an appointment in advance to avoid waiting time — especially on weekends."
+    },
+    {
+      "question": "How can I book an appointment?",
+      "answer": "You can book through our website, call us at +91 9999999999, or visit the salon directly."
+    },
+    {
+      "question": "What are your working hours?",
+      "answer": "We are open from 9AM to 7PM on all days except Thursday, which is a holiday."
+    },
+    {
+      "question": "Do you offer services for both men and women?",
+      "answer": "Yes! We are a unisex salon offering services for everyone."
+    }
+  ]
 }

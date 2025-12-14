@@ -32,8 +32,7 @@ class KnowledgeManager:
         with open("app/json/info.json","r",encoding="utf-8") as f:
             data = json.load(f);
         if isinstance(data, dict):
-            # Try common key names
-            self.faq = data.get("faqs") or data.get("faq") or data.get("data") or []
+            self.faq = data.get("faqs")
         else:
             self.faq = data
         self.qdrant = QdrantClient(
@@ -67,8 +66,6 @@ class KnowledgeManager:
     
     def _sync_faqs(self):
         """Sync FAQs to Qdrant."""
-        logger.info(f"FAQ type: {type(self.faq)}")
-        logger.info(f"FAQ content: {self.faq[:2] if self.faq else 'Empty'}")
         
         if not isinstance(self.faq, list):
             logger.error(f"FAQ is not a list! Type: {type(self.faq)}")

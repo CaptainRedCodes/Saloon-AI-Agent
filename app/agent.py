@@ -20,6 +20,8 @@ import asyncio
 
 import json
 
+from app.slot_booking import AvailabilityChecker
+
 with open("app/json/info.json","r") as f:
     app_data = json.load(f);
 SALON_INFO = (
@@ -51,6 +53,7 @@ class Assistant(Agent):
         self.salon_info = SALON_INFO
         self.service_prices = SALON_SERVICES
 
+        self.availability_checker = AvailabilityChecker()
         self.knowledge_base = KnowledgeManager()
         self.booking_manager = BookingManager()
         self.help_manager = HelpRequestManager()
@@ -86,6 +89,8 @@ class Assistant(Agent):
             }
 
         return f"The current date and time is {human_readable}"
+    
+
     @function_tool
     async def update_booking_context(
         self,
@@ -162,7 +167,7 @@ class Assistant(Agent):
             f"Here's what I have:\n"
             f"Name: {booking.customer_name}\n"
             f"Phone: {booking.phone_number}\n"
-            f"Service: {booking.service} (${booking.price})\n"
+            f"Service: {booking.service} (₹{booking.price})\n"
             f"Date: {booking.appointment_date}\n"
             f"Time: {booking.appointment_time}\n\n"
             f"Does everything look correct?"
@@ -182,7 +187,10 @@ class Assistant(Agent):
         if not context.userdata.waiting_for_confirmation:
             return "Please let me summarize the booking details for confirmation first."
 
-        slot_available = await self.check_availability(
+        if not booking.appointment_date or not booking.appointment_time:
+            return "Missing appointment date or time information."
+        
+        slot_available = self.availability_checker.check_availability(
             booking.appointment_date, booking.appointment_time
         )
         if not slot_available:
@@ -231,67 +239,46 @@ class Assistant(Agent):
         return result
 
     @function_tool
-    async def check_availability(
-        self,
-        context: RunContext[SalonUserData],
-        request: AvailabilityCheckPayload
-    ) -> str:
+    async def check_availability(self, context: RunContext[SalonUserData], request: AvailabilityCheckPayload) -> str:
         """
         Check slot availability for a given date and optionally time.
-        Stores the check in context for reference.
+        Agent uses this to proactively check and suggest available times.
         """
         try:
-            MAX_BOOKINGS_PER_SLOT = 2
-            all_slots = ["9:00 AM", "10:00 AM", "11:00 AM", "1:00 PM", "2:00 PM", "3:00 PM", "4:00 PM"]
-
-            # Track this check in context
+            if not request.date:
+                return "I need a date to check availability. Which date would you like?"
+            
+            # Log the check
             context.userdata.availability_checks.append({
                 "date": request.date,
                 "time": request.time or "",
                 "timestamp": datetime.now().isoformat()
             })
             context.userdata.last_tool_called = "check_availability"
-
-            # Fetch all bookings for the given date
-            bookings_ref = self.booking_manager.db.collection("appointments")\
-                .where("appointment_date", "==", request.date)
-            bookings = bookings_ref.stream()
             
-            slot_counts: dict[str, int] = {slot: 0 for slot in all_slots}
-            for doc in bookings:
-                data = doc.to_dict()
-                slot_time = data.get("appointment_time")
-                if slot_time in slot_counts:
-                    slot_counts[slot_time] += 1
-
-            # Helper: find available slots
-            available_slots = [slot for slot, count in slot_counts.items() if count < MAX_BOOKINGS_PER_SLOT]
-
-            if request.time:
-                # Check specific time
-                if request.time not in all_slots:
-                    return f"{request.time} is outside our business hours. Available times: {', '.join(all_slots)}"
-                
-                if slot_counts.get(request.time, 0) < MAX_BOOKINGS_PER_SLOT:
-                    context.userdata.last_tool_result = "available"
-                    return f"{request.time} on {request.date} is available."
-                else:
-                    context.userdata.last_tool_result = {"booked": request.time, "alternatives": available_slots}
-                    if available_slots:
-                        return f"{request.time} is fully booked. Available slots on {request.date}: {', '.join(available_slots)}"
-                    else:
-                        return f"All slots on {request.date} are fully booked."
-            else:
-                context.userdata.last_tool_result = available_slots
-                if available_slots:
-                    slots_formatted = "\n".join(f"• {t}" for t in available_slots)
-                    return f"Available times on {request.date}:\n{slots_formatted}"
-                else:
-                    return f"Unfortunately, we're fully booked on {request.date}. Would you like to check another date?"
-
+            # Perform availability check
+            result = self.availability_checker.check_availability(
+                date=request.date,
+                time=request.time
+            )
+            
+            # Store structured result
+            context.userdata.last_tool_result = {
+                "status": result.status,
+                "date": request.date,
+                "time": request.time,
+                "available_slots": result.available_slots if hasattr(result, 'available_slots') else []
+            }
+            
+            return result.message
+        
+        except ValueError as e:
+            logger.error(f"Validation error: {e}", exc_info=True)
+            return f"I couldn't check that date or time. {str(e)}"
+        
         except Exception as e:
-            logger.error(f"Availability check failed: {e}")
-            return "I'm having trouble checking availability. Let me get help from my supervisor."
+            logger.error(f"Availability check failed: {e}", exc_info=True)
+            return "I'm having trouble checking availability. Please try again."
 
     @function_tool
     async def request_help(
@@ -313,12 +300,12 @@ class Assistant(Agent):
             kb_result = self.knowledge_base.search(question, threshold=0.7)
             
             if kb_result:
-                logger.info(f"✓ KB answered: {question[:50]}...")
+                logger.info(f"KB answered: {question[:50]}...")
                 context.userdata.last_tool_called = "request_help"
                 context.userdata.last_tool_result = "kb_found"
                 return kb_result["answer"]
             
-            logger.info(f"✗ KB couldn't answer, sending to supervisor: {question[:50]}...")
+            logger.info(f"KB couldn't answer, sending to supervisor: {question[:50]}...")
             
             payload = HelpRequestCreate(
                 question=question,
@@ -330,7 +317,7 @@ class Assistant(Agent):
             context.userdata.last_tool_called = "request_help"
             context.userdata.last_tool_result = f"supervisor_notified:{request_id}"
             
-            logger.info(f"✓ Help request created: {request_id}")
+            logger.info(f"Help request created: {request_id}")
             
             return (
                 "I've sent your question to my supervisor. "

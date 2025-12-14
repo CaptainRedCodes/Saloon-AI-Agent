@@ -1,18 +1,17 @@
 import asyncio
 from datetime import datetime
 import logging
-import os
-from typing import Dict, List, Optional
 from uuid import uuid4
-
-import httpx
+from qdrant_client.models import PointStruct
+from qdrant_client import QdrantClient
+from sentence_transformers import SentenceTransformer
 from app.config.settings import help_settings
 from app.db import FirebaseManager
+from app.knowledge_base import QDRANT_API_KEY, QDRANT_COLLECTION, QDRANT_URL
 from app.models.help_request import (
     HelpRequestCreate,
     HelpRequestStatus,
     HelpRequestView,
-    SupervisorResponse
 )
 
 logging.basicConfig(
@@ -29,7 +28,12 @@ class HelpRequestManager:
         self.firebase = FirebaseManager()
         self.db = self.firebase.get_firestore_client()
         self.collection_name = help_settings.collection_name
-        self.webhook_url = os.getenv("WEBHOOK_URL")
+        self.qdrant = QdrantClient(
+            url=QDRANT_URL,
+            api_key=QDRANT_API_KEY
+        )
+        self.qdrant_collection = QDRANT_COLLECTION
+        self.encoder = SentenceTransformer("all-MiniLM-L6-v2")
   
     async def _run_in_executor(self, func, *args):
         """Run synchronous Firebase operations in executor."""
@@ -56,150 +60,68 @@ class HelpRequestManager:
             )
 
 
-        # Save to Firebase
         def write_doc():
             doc_ref = self.db.collection(self.collection_name).document(request_id)
-            doc_ref.set(doc_data.model_dump())
+            logger.info(f"Saved in DB: {request_id}")
+            doc_ref.set(doc_data.model_dump(mode='json', exclude_none=True))
             return request_id
 
         await self._run_in_executor(write_doc)
         logger.info(f"Help request created: {request_id}  - {payload.question}")
 
-        # Notify supervisor via webhook
-        await self._notify_supervisor(request_id, doc_data)
-
         return request_id
 
-    async def _notify_supervisor(self, request_id: str, help_request: HelpRequestView):
-        """Send webhook notification to supervisor with request details."""
-        if not self.webhook_url:
-            logger.warning("Supervisor webhook URL not configured (WEBHOOK_URL env var)")
-            return
-
-        # Prepare webhook payload
-        webhook_payload = {
-            "event": "help_request_created",
-            "request_id": request_id,
-            "question": help_request.question,
-            "room_name": help_request.room_name,
-            "created_at": help_request.created_at.isoformat(),
-            "status": help_request.status
-        }
-
+    async def _store_in_qdrant(self, question: str, answer: str, request_id: str):
+        """Store resolved question-answer pair in Qdrant vector database."""
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.post(
-                    self.webhook_url,
-                    json=webhook_payload,
-                    headers={"Content-Type": "application/json"}
-                )
-                
-                if resp.status_code == 200:
-                    logger.info(f"✓ Supervisor notified for request {request_id}")
-                else:
-                    logger.warning(f"✗ Supervisor webhook returned {resp.status_code}: {resp.text}")
-                    
-        except httpx.TimeoutException:
-            logger.error(f"✗ Webhook timeout for request {request_id}")
-        except httpx.ConnectError:
-            logger.error(f"✗ Cannot connect to webhook URL: {self.webhook_url}")
+            embedding = self.encoder.encode(question).tolist()
+            
+            point = PointStruct(
+                id=str(uuid4()),
+                vector=embedding,
+                payload={
+                    "question": question,
+                    "answer": answer,
+                    "type": "supervisor_resolved",
+                    "request_id": request_id,
+                    "created_at": datetime.now().isoformat()
+                }
+            )
+            
+            self.qdrant.upsert(
+                collection_name=self.qdrant_collection,
+                points=[point]
+            )
+            logger.info(f"Stored Q&A in Qdrant for request {request_id}")
+            
         except Exception as e:
-            logger.error(f"✗ Error notifying supervisor: {e}")
+            logger.error(f"Error storing in Qdrant: {e}")
 
-    async def resolve_help_request(
-        self,
-        request_id: str,
-        supervisor_response: SupervisorResponse
-    ) -> Dict:
-        """Resolve a help request (called by supervisor)."""
-
-        def update_doc():
-            doc_ref = self.db.collection(self.collection_name).document(request_id)
-            doc = doc_ref.get()
-
-            if not doc.exists:
-                raise ValueError(f"Help request {request_id} not found")
+    async def search_similar_resolved_questions(self, query: str, limit: int = 3, score_threshold: float = 0.7):
+        """Search for similar resolved questions in Qdrant."""
+        try:
+            # Create embedding for query
+            query_embedding = self.encoder.encode(query).tolist()
             
-            data = doc.to_dict()
-            if not data:
-                raise ValueError(f"Help request {request_id} data is empty")
+            # Search in Qdrant
+            results = self.qdrant.search(
+                collection_name=self.qdrant_collection,
+                query_vector=query_embedding,
+                limit=limit,
+                threshold=score_threshold
+            )
             
-            response_time = (datetime.now() - data["created_at"]).total_seconds()
-
-            update_data = {
-                "status": HelpRequestStatus.RESOLVED.value,
-                "answer": supervisor_response.answer,
-                "resolution_notes": supervisor_response.resolution_notes,
-                "updated_at": datetime.now(),
-                "response_time_seconds": response_time,
-                "resolved_by": "supervisor",
-                "resolved_at": datetime.now()
-            }
-            doc_ref.update(update_data)
-            return data, response_time
-
-        help_request, response_time = await self._run_in_executor(update_doc)
-        logger.info(f"Help request {request_id} resolved in {response_time:.1f}s")
-
-        return {
-            "request_id": request_id,
-            "status": "resolved",
-            "response_time_seconds": response_time,
-            "original_question": help_request["question"],
-            "answer": supervisor_response.answer
-        }
-
-    async def get_pending_requests(self) -> List[HelpRequestView]:
-        """Fetch all pending help requests."""
-
-        def fetch_pending():
-            query = self.db.collection(self.collection_name).where(
-                "status", "==", HelpRequestStatus.PENDING.value
-            ).order_by("created_at", direction="DESCENDING")
+            similar_qas = []
+            for result in results:
+                similar_qas.append({
+                    "question": result.payload["question"],
+                    "answer": result.payload["answer"],
+                    "similarity_score": result.score,
+                    "request_id": result.payload.get("request_id")
+                })
             
-            requests = []
-            for doc in query.stream():
-                try:
-                    requests.append(HelpRequestView(id=doc.id, **doc.to_dict()))
-                except Exception as e:
-                    logger.error(f"Error parsing request {doc.id}: {e}")
-            return requests
-
-        return await self._run_in_executor(fetch_pending)
-
-    async def get_request_by_id(self, request_id: str) -> Optional[HelpRequestView]:
-        """Fetch a specific help request by ID."""
-
-        def fetch_doc():
-            doc_ref = self.db.collection(self.collection_name).document(request_id)
-            doc = doc_ref.get()
+            return similar_qas
             
-            if not doc.exists:
-                return None
-                
-            data = doc.to_dict()
-            if not data:
-                return None
-                
-            return HelpRequestView(id=doc.id, **data)
-
-        return await self._run_in_executor(fetch_doc)
-    
-    async def get_all_requests(self, limit: int = 50) -> List[HelpRequestView]:
-        """Fetch recent help requests (for supervisor dashboard)."""
-
-        def fetch_all():
-            query = self.db.collection(self.collection_name)\
-                .order_by("created_at", direction="DESCENDING")\
-                .limit(limit)
-            
-            requests = []
-            for doc in query.stream():
-                try:
-                    requests.append(HelpRequestView(id=doc.id, **doc.to_dict()))
-                except Exception as e:
-                    logger.error(f"Error parsing request {doc.id}: {e}")
-            return requests
-
-        return await self._run_in_executor(fetch_all)
-
+        except Exception as e:
+            logger.error(f"✗ Error searching Qdrant: {e}")
+            return []
