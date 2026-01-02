@@ -2,14 +2,18 @@ from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, Field, field_validator
 
+class CollectCustomerInformationArgs(BaseModel):
+    customer_name: Optional[str] = None
+    phone_number: Optional[str] = None
+
 
 class BookingCreate(BaseModel):
-    customer_name: str = Field(..., description="Name of the customer")
-    service: str = Field(..., description="Service being booked")
-    appointment_date: str = Field(..., description="Booking date (YYYY-MM-DD)")
-    appointment_time: str = Field(..., description="Booking time (HH:MM)")
-    price: float = Field(..., description="Price of the service")
-    phone_number: Optional[str] = Field("", description="Customer phone number")
+    customer_name: Optional[str] = None
+    service: Optional[str] = None
+    appointment_date: Optional[str] = None
+    appointment_time: Optional[str] = None
+    price: Optional[int] = None
+    phone_number: Optional[str] = None
 
     @field_validator("phone_number")
     def validate_phone(cls, v):

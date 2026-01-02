@@ -4,9 +4,9 @@ import logging
 from uuid import uuid4
 from qdrant_client.models import PointStruct
 from qdrant_client import QdrantClient
-from sentence_transformers import SentenceTransformer
 from app.config.settings import help_settings
 from app.db import FirebaseManager
+from app.embeddings import get_encoder
 from app.knowledge_base import QDRANT_API_KEY, QDRANT_COLLECTION, QDRANT_URL
 from app.models.help_request import (
     HelpRequestCreate,
@@ -33,7 +33,7 @@ class HelpRequestManager:
             api_key=QDRANT_API_KEY
         )
         self.qdrant_collection = QDRANT_COLLECTION
-        self.encoder = SentenceTransformer("all-MiniLM-L6-v2")
+        self.encoder = get_encoder()
   
     async def _run_in_executor(self, func, *args):
         """Run synchronous Firebase operations in executor."""

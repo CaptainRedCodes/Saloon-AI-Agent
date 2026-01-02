@@ -19,10 +19,6 @@ class Settings(BaseSettings):
     tts_provider: Optional[str] = None
 
     class Config:
-        # If your pydantic-settings is recent, use model_config instead of Config
-        # model_config = SettingsConfigDict(env_file=".env")
-        
-        # If sticking with Config for Pydantic V1:
         env_file = ".env"
         # Optional: Add extra='ignore' here IF you still get errors from *other* system variables
         # extra = 'ignore'
